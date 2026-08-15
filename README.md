@@ -1,302 +1,317 @@
 # BinaryLens
 
-> A practical lens into compiled binaries.
+**BinaryLens** is a command-line static binary analysis / reverse
+engineering tool for inspecting Windows PE and ELF executables. It parses
+a binary's structure, extracts imports, exports, sections, and strings,
+computes hashes and entropy, and surfaces a set of clearly-explained
+static indicators — without ever executing the file being analyzed.
 
-BinaryLens is a command-line static binary analysis tool for inspecting PE and ELF executables, extracting structural information, calculating hashes and entropy, analyzing imports and exports, extracting strings, and surfacing static indicators — without executing the analyzed file.
+## Why it exists
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Status: Production/Stable](https://img.shields.io/badge/status-production%2Fstable-brightgreen.svg)]()
+Reverse engineers and security researchers routinely need a fast,
+scriptable first look at an unknown binary before deciding whether it's
+worth deeper analysis in a disassembler or sandbox. BinaryLens is built
+to be that first look: a single command that produces a clean, accurate,
+professional report of a binary's structure and static risk indicators,
+usable both by a human at a terminal and by other tooling via JSON
+output.
 
-## Overview
-
-BinaryLens performs **static analysis only** — it reads and parses a target binary's structure without loading, mapping for execution, or invoking any code from it. It currently supports **PE** (Windows) and **ELF** (Linux/Unix) binaries.
-
-Intended for:
-
-- Reverse engineers doing initial triage
-- Security researchers
-- Malware analysts
-- Students learning binary and executable formats
-- Developers curious about PE/ELF internals
-
-**Static indicators are not a malware verdict.** BinaryLens surfaces individually-explained structural observations (entropy, imports, section characteristics, etc.) and reports how many were detected — it never classifies a file as malicious or benign.
+BinaryLens deliberately does **not** try to tell you whether a file is
+malware. It surfaces observations — high entropy, unusual imports,
+writable+executable sections, and so on — and leaves interpretation to
+the analyst.
 
 ## Features
 
-**Binary metadata** — filename, size, format (PE/ELF), architecture, entry point, image base (PE), subsystem, compilation timestamp (PE)
-
-**Hashing** — MD5, SHA-1, SHA-256, computed in a single streaming pass
-
-**PE analysis** — DOS/PE headers, file characteristics flags, sections (name, virtual/raw size, permissions, entropy), imports, exports, overlay size
-
-**ELF analysis** — ELF class/machine/object type, PIE and NX flags, sections, dynamic symbols/imports, exported symbols, overlay size
-
-**Static indicators** — a rule-based engine that flags, among others:
-- high-entropy sections
-- writable + executable sections
-- dynamic API resolution, memory-allocation, process-injection, process-execution, network, anti-analysis, and registry-related imports (PE)
-- unusual or packer-associated section names
-- a combined low-import-count + high-entropy packing heuristic (PE)
-- missing expected metadata (no sections, no imports, zero timestamp)
-- overlay data present
-- abnormal PE characteristics
-
-**String extraction** — ASCII and UTF-16LE ("wide") strings, with a configurable minimum length and result cap
-
-**Reporting** — Rich-formatted terminal output, and a structured JSON report
-
-## Example Output
-
-Illustrative only — this is not output from a real sample, but reflects the actual fields and layout BinaryLens produces.
-
-```text
-BinaryLens v1.0
-──────────────────────────────────────────────────
-
-File        : example.exe
-Architecture: x86-64
-Format      : PE
-Size        : 1.42 MB
-Subsystem   : Windows Console
-Entry Point : 0x00401000
-Image Base  : 0x00400000
-Compiled    : 2019-03-14 10:22:01 UTC
-SHA256      : 8f3c2e...
-SHA1        : a91b7c...
-MD5         : 44d2f0...
-
-[Sections]
-
-Name    Raw Size  Virtual Size  Perms  Entropy
-.text   842.00 KB 840.11 KB     R-X    6.72
-.rdata  231.00 KB 229.80 KB     R--    5.11
-.data    42.00 KB  41.50 KB     RW-    3.21
-
-[Imports]
-kernel32.dll
-  CreateFileW
-  VirtualAlloc
-  VirtualProtect
-  GetProcAddress
-
-[Analysis]
-⚠ High entropy section detected
-  Section: .text
-  Entropy: 6.72
-⚠ Executable memory allocation API
-  Apis: VirtualAlloc, VirtualProtect
-⚠ Dynamic API resolution
-  Apis: GetProcAddress
-
-Risk indicators: 3
-This count reflects detected static indicators only. It is not a malware verdict.
-```
-
-### Drag & Drop
-
-BinaryLens accepts a normal filesystem path argument. If launched with no arguments, it prompts interactively and accepts a path pasted or dragged into the terminal — this is **terminal path input**, not a graphical drag-and-drop UI:
-
-```text
-$ binarylens
-BinaryLens v1.0
-No file provided.
-...
-Drag and drop a binary file here, then press Enter: C:\Users\User\Desktop\program.exe
-```
-
-Paths containing spaces are supported (the CLI rejoins split argv tokens when an unquoted dropped path is split by the shell).
+- **PE and ELF parsing** — headers, sections, imports, exports, entry
+  point, image base, subsystem, compile timestamp.
+- **Hashing** — MD5, SHA-1, SHA-256.
+- **Entropy analysis** — per-section Shannon entropy.
+- **String extraction** — static ASCII and UTF-16LE string scanning with
+  sensible limits so huge binaries don't flood your terminal.
+- **Contextual detection engine** — separates capabilities (what the
+  binary can do) from findings (correlated, evidence-backed anomalies),
+  with a severity model (`INFO`/`LOW`/`MEDIUM`/`HIGH`) instead of an
+  "API = risk point" count. See [`docs/indicators.md`](docs/indicators.md)
+  for the full rule reference.
+- **JSON reports** — the exact same analysis data as the terminal report,
+  structured for scripting and tool integration.
+- **Drag-and-drop terminal support** — run `binarylens` with no
+  arguments and drop a file into the terminal.
+- **Clean error handling** — invalid, corrupted, or unsupported files
+  produce a clear message, never a raw Python traceback.
 
 ## Installation
 
+Requires Python 3.11+.
+
+### Windows — one-click launcher
+
+Double-click **`run_binarylens.bat`** (or drag a binary file directly onto
+it). It will:
+
+1. Check that Python 3.11+ and `pip` are available.
+2. Check each required dependency (`pefile`, `lief`, `capstone`, `rich`)
+   individually and install any that are missing via `requirements.txt`.
+3. Install BinaryLens itself if it isn't already installed.
+4. Launch BinaryLens — either interactively (drag-and-drop prompt) or
+   directly against the file you dropped onto the `.bat`.
+
+```bat
+run_binarylens.bat
+run_binarylens.bat program.exe
+run_binarylens.bat program.exe --json report.json
+```
+
+### Manual installation (Windows, macOS, Linux)
+
 ```bash
-git clone https://github.com/Knyazovich/BinaryLens.git
+git clone <this-repository>
 cd BinaryLens
-
-python -m venv .venv
-```
-
-**Windows:**
-```powershell
-.venv\Scripts\activate
-```
-
-**Linux/macOS:**
-```bash
-source .venv/bin/activate
-```
-
-```bash
 pip install -r requirements.txt
 pip install -e .
 ```
 
-This registers the `binarylens` console command via the `[project.scripts]` entry point in `pyproject.toml`.
-
-**Windows convenience launcher:** `run_binarylens.bat` checks for Python 3.11+, verifies/installs dependencies, installs the package if needed, and launches BinaryLens (drag a file onto the `.bat` file, or run it with no arguments for the interactive prompt).
+This installs the `binarylens` command on your `PATH`.
 
 ## Usage
 
 ```bash
-binarylens example.exe
+binarylens program.exe
 ```
 
-Or as a module:
+### Show only specific sections of the report
 
 ```bash
-python -m binarylens.cli example.exe
+binarylens program.exe --sections
+binarylens program.exe --imports
+binarylens program.exe --exports
+binarylens program.exe --strings
+binarylens program.exe --entropy
 ```
 
-Two bundled sample binaries (synthetic, non-functional placeholders) are provided for trying the tool immediately:
+Flags can be combined, e.g. `binarylens program.exe --sections --entropy`.
+
+### JSON output
 
 ```bash
-binarylens examples/sample_pe32.exe
-binarylens examples/sample_elf64
+binarylens program.exe --json report.json
 ```
 
-### Command Reference
+### Other options
 
-| Flag                    | Description                                          |
-|--------------------------|--------------------------------------------------------|
-| `<file>`                  | Path to the binary to analyze                          |
-| `--sections`              | Show only section information                          |
-| `--imports`               | Show only imported functions                            |
-| `--exports`               | Show only exported functions                            |
-| `--strings`               | Show only extracted strings                             |
-| `--entropy`               | Show only per-section entropy                           |
-| `--json OUTPUT_PATH`      | Write a machine-readable JSON report                    |
-| `--min-string-length N`  | Minimum length for extracted strings (default: 4)       |
-| `--max-strings N`        | Maximum number of strings to extract/display (default: 500) |
-| `--version`               | Print the BinaryLens version                            |
+```bash
+binarylens program.exe --min-string-length 6 --max-strings 200
+binarylens --version
+```
 
-With no flags, BinaryLens prints a full report (file info, sections, imports, exports if present, and analysis indicators). Passing any specific flag switches to a filtered report containing only the requested sections.
+## Drag-and-drop usage
 
-## Supported Formats
+Run BinaryLens with no arguments:
+
+```bash
+binarylens
+```
+
+You'll be prompted to drag and drop a file into the terminal:
 
 ```text
-PE   — .exe, .dll, and other PE-compatible binaries (detected via "MZ" signature)
-ELF  — Linux/Unix binaries (detected via the \x7fELF signature), parsed with LIEF
+Drag and drop a binary file here, then press Enter: C:\Users\User\Desktop\program.exe
 ```
 
-Both formats are implemented and covered by the test suite. Unrecognized formats produce an explicit `UnsupportedFormatError` rather than a partial or best-effort result.
+Paths with spaces, and paths wrapped in quotes by the terminal, are
+handled automatically. This also works as a normal CLI argument:
 
-## Analysis Details
+```bash
+binarylens "C:\Users\User\Desktop\my program.exe"
+```
 
-**Entropy** — Shannon entropy in bits/byte (0–8), computed per section. High entropy (≥7.0 in the built-in indicator threshold) can correlate with compression, encryption, or packing, but is an indicator only, never proof.
+## Example output
 
-**Imports / Exports** — PE imports are read from the import directory and grouped by DLL; PE exports come from the export directory. ELF imports are taken from dynamic symbols and linked libraries; ELF exports come from exported dynamic symbols. The presence of a flagged API does not by itself indicate malicious behavior — many are common in legitimate software.
+A binary showing only ordinary, uncorrelated capabilities:
 
-**Sections** — name, virtual address/size, raw size, permissions (R/W/X), and entropy, for both PE and ELF.
+```text
+BinaryLens v1.0
+────────────────────────────────
 
-**Hashes** — MD5, SHA-1, and SHA-256, computed by streaming the file once in 1 MB chunks.
+File        : setup.exe
+Architecture: x86-64
+Format      : PE
+Size        : 4.10 MB
+SHA256      : 8f3c2e...
 
-**Strings** — printable ASCII and UTF-16LE sequences extracted via regex over the raw file bytes, with a configurable minimum length, a result cap, and a hard 64 MB scan ceiling to bound resource use on very large files.
+[Sections]
+.text       842 KB    Entropy: 6.72    R-X    Known / Common
+.rdata      231 KB    Entropy: 5.11    R--    Known / Common
+.wixburn      108 B   Entropy: 1.02    R--    Known Installer
 
-## Security Model
+[Imports]
+kernel32.dll
+  CreateProcessW
+  OpenProcess
+  VirtualAlloc
+  VirtualProtect
+  GetProcAddress
 
-BinaryLens performs **static analysis only**, by design and in its docstrings:
+[Packaging]
+ℹ WiX Burn bootstrapper section detected (.wixburn)
 
-- It never executes analyzed binaries
-- It never loads or maps analyzed DLLs/ELFs for execution
-- It never invokes functions from analyzed files
-- It never automatically accesses URLs or paths found in extracted strings
-- It never modifies analyzed files (files are opened read-only)
+[Overlay]
+Present
+Size : 31.20 MB
+Ratio: 88% of file size
 
-Analyzed files should always be treated as **untrusted input**. Corrupted or malformed files raise explicit, caught exceptions (`CorruptedBinaryError`, `UnsupportedFormatError`, etc.) rather than propagating raw parser tracebacks.
+[Capabilities]
+Process Management
+  CreateProcessW
+  OpenProcess
+Memory Management
+  VirtualAlloc
+  VirtualProtect
+Dynamic Linking
+  GetProcAddress
+
+[Findings]
+INFO   Large overlay detected
+INFO   Dynamic API resolution capability
+INFO   Process management capability
+
+[Summary]
+
+Informational findings : 3
+Low severity            : 0
+Medium severity         : 0
+High severity           : 0
+
+No significant anomalies were identified by static analysis.
+```
+
+A binary with a genuinely correlated, evidence-backed pattern:
+
+```text
+[Findings]
+
+HIGH   ⚠ Strong process injection pattern
+  The binary imports a complete chain of APIs commonly used to inject
+  and execute code inside another process...
+  Evidence:
+    CreateRemoteThread
+    OpenProcess
+    VirtualAllocEx
+    WriteProcessMemory
+  Confidence: High
+
+[Summary]
+
+Informational findings : 1
+Low severity            : 0
+Medium severity         : 0
+High severity            : 1
+
+One or more strongly correlated indicators were found. Manual review in
+a full analysis environment is recommended.
+```
+
+Every value in a real report is computed from the actual file being
+analyzed — nothing above is hardcoded or simulated. See
+[`docs/indicators.md`](docs/indicators.md) for how the engine decides
+what becomes a finding and at what severity.
+
+## Supported formats
+
+- **PE** (`.exe`, `.dll`, `.sys`, etc.) — x86 and x86-64, via `pefile`.
+- **ELF** — x86, x86-64, ARM, ARM64, and others as recognized by `LIEF`.
+
+Unsupported or unrecognized files produce a clear error message rather
+than a crash or fabricated output.
 
 ## Architecture
 
 ```text
-BinaryLens/
-├── binarylens/
-│   ├── cli.py                 # argparse CLI, drag-and-drop prompt, entry point
-│   ├── analyzer.py            # orchestrates parsing + analysis into an AnalysisResult
-│   ├── models.py               # dataclasses: FileInfo, Hashes, SectionInfo, etc.
-│   ├── exceptions.py           # BinaryLensError and subclasses
-│   ├── formats/
-│   │   ├── pe.py                # PE parsing (pefile)
-│   │   └── elf.py               # ELF parsing (LIEF)
-│   ├── analysis/
-│   │   ├── entropy.py           # Shannon entropy
-│   │   ├── hashes.py            # MD5/SHA-1/SHA-256
-│   │   ├── strings.py           # ASCII/UTF-16LE string extraction
-│   │   ├── imports.py           # API watchlists used by indicators
-│   │   └── indicators.py        # rule-based static indicator engine
-│   ├── output/
-│   │   ├── terminal.py          # Rich terminal rendering
-│   │   └── json_report.py       # JSON report generation
-│   └── utils/
-│       ├── files.py             # path resolution, size formatting
-│       └── formatting.py        # hex/permission formatting helpers
-├── tests/                       # pytest suite (see Testing)
-├── examples/                    # synthetic sample_pe32.exe / sample_elf64
-├── docs/indicators.md            # indicator documentation
-├── requirements.txt
-├── pyproject.toml
-├── run_binarylens.bat            # Windows dependency-check + launch script
-├── README.md
-└── LICENSE
+binarylens/
+├── cli.py              CLI entry point, argument parsing, drag-and-drop
+├── analyzer.py          Orchestrates parsing + analysis into one result
+├── models.py             Shared data model (Capability, Finding, ...)
+├── exceptions.py         Typed errors for clean CLI-level messages
+├── formats/
+│   ├── pe.py              PE parsing (pefile)
+│   └── elf.py             ELF parsing (LIEF)
+├── analysis/
+│   ├── hashes.py          MD5 / SHA-1 / SHA-256
+│   ├── entropy.py         Shannon entropy
+│   ├── strings.py         Static string extraction
+│   ├── imports.py         Granular Windows API sets (building blocks only)
+│   ├── findings.py        Finding/Capability factory helpers
+│   ├── scoring.py         Severity summary + hedged assessment note
+│   ├── correlation.py     Orchestrates every rule module below
+│   └── indicators/
+│       ├── api_categories.py  API → capability classification
+│       ├── injection.py       Process injection correlation
+│       ├── anti_debug.py      Anti-debugging correlation
+│       ├── persistence.py     Persistence-mechanism correlation
+│       ├── installers.py      Installer/packaging framework recognition
+│       ├── sections.py        Section name/structure classification
+│       ├── packing.py         Multi-signal packing correlation
+│       └── overlay.py         Overlay size/context analysis
+├── output/
+│   ├── terminal.py        Rich-based terminal rendering
+│   └── json_report.py     JSON report generation
+└── utils/
+    ├── files.py            Path resolution, drag-and-drop cleanup
+    └── formatting.py       Small shared formatting helpers
 ```
 
-## Technology Stack
+The analysis logic (`analyzer.py`, `analysis/`, `formats/`) never renders
+anything — it only produces an `AnalysisResult`. Both `output/terminal.py`
+and `output/json_report.py` consume that same object, so terminal and
+JSON output can never drift apart. See [`docs/indicators.md`](docs/indicators.md)
+for how `correlation.py` and the `indicators/` rule modules turn raw
+imports and section data into capabilities and findings.
 
-```text
-Python 3.11+
-pefile   — PE header, section, import/export parsing
-lief     — ELF parsing
-rich     — formatted terminal output
-```
+## Security considerations
 
-`capstone` is listed as a dependency in `requirements.txt` / `pyproject.toml` but is not currently imported or used anywhere in the codebase — it appears to be reserved for a future disassembly feature (see Roadmap).
+BinaryLens performs **static analysis only**. It never:
+
+- executes, launches, or maps the analyzed binary for execution,
+- calls or resolves any function from the analyzed file,
+- connects to any URL or resource found inside the analyzed file,
+- modifies the analyzed file.
+
+Every file you point BinaryLens at is treated as untrusted input. Parse
+errors are caught and reported cleanly rather than propagating a
+traceback or partial/fabricated data.
+
+Findings are **evidence-backed observations, not a malware verdict**.
+BinaryLens never claims a file "is malware" and never reports a malware
+probability — it separates ordinary capabilities from correlated
+anomalies, explains exactly what evidence produced each finding, and
+leaves judgment to you.
 
 ## Testing
 
 ```bash
+pip install -r requirements.txt
+pip install pytest
 pytest
 ```
 
-The suite (`tests/`) covers:
-
-- PE parsing (`test_pe.py`)
-- ELF parsing (`test_elf.py`)
-- The analysis orchestrator (`test_analyzer.py`)
-- Entropy calculation (`test_entropy.py`)
-- Hash calculation (`test_hashes.py`)
-- Static indicators (`test_indicators.py`)
-- String extraction (`test_strings.py`)
-- JSON report output (`test_json_report.py`)
-- File path resolution utilities (`test_files_utils.py`)
-- CLI behavior (`test_cli.py`)
-
-Fixtures for minimal/corrupted synthetic PE binaries live in `tests/fixtures.py`. Tests that require `pefile` are skipped automatically if it isn't installed (`pytest.importorskip`).
-
-## Limitations
-
-- Not a full malware detection engine — it reports indicators, not verdicts.
-- Static indicators can produce false positives; several are explicitly documented as weak heuristics (e.g. the packing heuristic).
-- Does not replace Ghidra, IDA, Binary Ninja, or a debugger.
-- No disassembly or control-flow analysis is currently performed, despite `capstone` being a listed dependency.
-- Packed or obfuscated binaries may limit the usefulness of static analysis.
-- No dynamic behavior analysis (by design — see Security Model).
-- ELF import attribution is coarser than PE's: unresolved dynamic symbols are grouped under a synthetic `(dynamic symbols)` bucket rather than mapped to a specific library.
+The test suite covers PE and ELF parsing, hash and entropy calculation,
+import/export/string extraction, the detection engine's correlation
+rules (including dedicated false-positive regression tests for
+installer-style binaries), JSON report generation, CLI argument
+handling, invalid/corrupted file handling, and paths containing spaces.
+Tests use small, synthetically generated binary fixtures (built with
+`struct`, see `tests/fixtures.py`) — no real-world or third-party
+binaries are executed or required.
 
 ## Roadmap
 
-Future ideas — not currently implemented:
-
-```text
-- [ ] Disassembly integration (capstone is already a declared dependency)
-- [ ] Control-flow graph generation
-- [ ] Richer PE/ELF anomaly detection
-- [ ] More advanced string classification
-- [ ] Import categorization
-- [ ] Additional binary formats
-```
-
-## Contributing
-
-Bug reports, pull requests, new analysis modules, additional tests, and documentation improvements are welcome. Please open an issue before starting significant work so the approach can be discussed first.
+- Disassembly view for individual functions (via `Capstone`, already a
+  dependency) at the entry point and exported functions.
+- Mach-O support.
+- YARA rule integration for the indicator engine.
+- Diffing mode to compare two binaries' static analysis results.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

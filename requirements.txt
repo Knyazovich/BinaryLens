@@ -1,0 +1,4 @@
+pefile>=2023.2.7
+lief>=0.14.0
+capstone>=5.0.1
+rich>=13.7.0

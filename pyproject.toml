@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "binarylens"
+version = "1.0.0"
+description = "Static binary analysis / reverse engineering CLI tool for PE and ELF binaries."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "BinaryLens Project" }]
+keywords = [
+    "reverse-engineering",
+    "static-analysis",
+    "malware-analysis",
+    "security",
+    "pe",
+    "elf",
+    "cli",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+]
+dependencies = [
+    "pefile>=2023.2.7",
+    "lief>=0.14.0",
+    "capstone>=5.0.1",
+    "rich>=13.7.0",
+]
+
+[project.scripts]
+binarylens = "binarylens.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["binarylens*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
